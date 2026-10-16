@@ -1,12 +1,9 @@
 <?php
-// components/sidebar.php - navigation. Admin sees everything (including Sales Report); Staff sees Orders, Services and Transactions.
-// This is the side menu. Admin sees everything (including Sales Report, Users, Audit Log);
-// Staff sees Orders, Services and Transactions lang.
+// components/sidebar.php - navigation. Admin sees everything (incl. Sales Report); Staff sees Orders, Services and Transactions.
 $sb_is_admin = (($_SESSION['role'] ?? '') === 'Admin');
 $sb_page     = basename($_SERVER['PHP_SELF']);
 
 // Badges: orders still in the shop, and pending password-reset requests (admin).
-// The small count next to the menu — orders still in the shop, and (for Admin) pending reset requests.
 $sb_orders_count = 0;
 $sb_reset_count  = 0;
 if (isset($conn)) {
@@ -23,7 +20,7 @@ if (isset($conn)) {
 }
 
 $sb_nav = [];
-// Order: daily work first (orders, money, reports), tapos setup (services, users), and finally the audit trail.
+// Order: daily work first (orders, money, reports), then setup (services, users), then the audit trail.
 if ($sb_is_admin) $sb_nav[] = ['dashboard.php', 'bi-grid-fill', 'Dashboard', 0];
 $sb_nav[] = ['view_order.php', 'bi-list-check', 'Orders', $sb_orders_count];
 $sb_nav[] = ['transaction.php', 'bi-clock-history', 'Transactions', 0];
@@ -37,6 +34,11 @@ $sb_role  = $sb_is_admin ? 'Administrator' : 'Staff';
 $sb_words = preg_split('/\s+/', trim($sb_full));
 $sb_initials = strtoupper(mb_substr($sb_words[0], 0, 1) . (count($sb_words) > 1 ? mb_substr(end($sb_words), 0, 1) : ''));
 ?>
+<style>
+/* On phones 100vh is taller than the visible screen (the browser bars), which pushed Logout off the bottom.
+   dvh is the visible height, so the menu fits and scrolls if it must. */
+#sidebar { height: 100vh; height: 100dvh; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+</style>
 <nav id="sidebar" class="p-3 d-flex flex-column justify-content-between text-white">
     <div>
         <div class="sb-top">
