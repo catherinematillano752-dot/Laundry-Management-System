@@ -3824,3 +3824,22 @@ a.wd-card {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- 10. phones (mga maliit na screen) ----------
+   The dialogs (SweetAlert2) are 30em wide above; on a small screen they must fit the screen instead. */
+.swal2-popup {
+  width: min(30em, calc(100vw - 24px)) !important;
+  max-width: none !important;
+}
+@media (max-width: 575.98px) {
+  .swal2-popup {
+    padding: 22px 16px 18px !important;
+  }
+  .swal2-actions {
+    flex-wrap: wrap;
+  }
+  .swal2-actions .swal2-confirm,
+  .swal2-actions .swal2-cancel {
+    flex: 1 1 100%;
+  }
+}
