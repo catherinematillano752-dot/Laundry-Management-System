@@ -1,9 +1,7 @@
 <?php
-// sales_report.php - sales report (admin only), opened galing sa dashboard's Completed orders panel and the sidebar.
+// sales_report.php - sales report (admin only), opened from the dashboard's Completed orders panel and the sidebar.
 // Same two views as the dashboard: Weekly (this week, with the last 8 weeks as bars) and Annual (this year by month).
-// Sales = payments recorded at release (payments.amount_due), kaya cancelled and unpaid orders never count.
-// "Sales" are the payments recorded at release. So cancelled and
-// unpaid orders are excluded. Each payment sa period can be exported to CSV (Excel).
+// Sales = payments recorded at release (payments.amount_due), so cancelled and unpaid orders never count.
 //   ?range=week|year (default week)        ?range=week&export=csv   one row per payment in the period (opens in Excel)
 // Print uses the browser's print dialog (Save as PDF works too); the print layout hides the sidebar and buttons.
 if (session_status() === PHP_SESSION_NONE) session_start();
@@ -24,8 +22,7 @@ $from  = $range === 'year' ? date('Y-01-01') : date('Y-m-d', strtotime('monday t
 $from_dt = $from . ' 00:00:00';
 $to_dt   = $today . ' 23:59:59';
 
-// ---------- CSV export: one row per payment sa period ----------
-// Kapag export=csv, one row per payment is downloaded as CSV (opens in Excel).
+// ---------- CSV export: one row per payment in the period ----------
 if (($_GET['export'] ?? '') === 'csv') {
     $stmt = $conn->prepare(
         "SELECT p.receipt_no, p.paid_at, o.order_number, c.full_name AS customer, c.phone, s.name AS service, o.weight_kg,
@@ -45,7 +42,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     header('Content-Disposition: attachment; filename="sales_report_' . $from . '_to_' . $today . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");   // UTF-8 marker so Excel reads names correctly
-    // Ang text starting with = + - @ is treated as a formula by Excel: a leading quote keeps it text.
+    // Text that starts with = + - @ would be run as a formula by Excel: a leading quote keeps it text.
     $safe = function ($v) { $v = (string) $v; return ($v !== '' && strpos("=+-@\t\r", $v[0]) !== false) ? "'" . $v : $v; };
     fputcsv($out, ['Receipt No', 'Paid At', 'Order No', 'Customer', 'Contact', 'Service', 'Weight (kg)', 'Method', 'GCash Reference', 'Amount (PHP)', 'Received By']);
     $sum = 0.0; $n = 0;
@@ -53,7 +50,7 @@ if (($_GET['export'] ?? '') === 'csv') {
         $phone = (string) ($r['phone'] ?? '');
         fputcsv($out, [
             $r['receipt_no'], $r['paid_at'], $r['order_number'], $safe($r['customer']),
-            $phone !== '' ? '="' . preg_replace('/[^0-9+]/', '', $phone) . '"' : '',   // keeps the leading 0 sa Excel
+            $phone !== '' ? '="' . preg_replace('/[^0-9+]/', '', $phone) . '"' : '',   // keeps the leading 0 in Excel
             $safe($r['service']), number_format((float) $r['weight_kg'], 2, '.', ''), $r['method'], $safe($r['reference_no']),
             number_format((float) $r['amount_due'], 2, '.', ''), $safe($r['cashier']),
         ]);
@@ -65,7 +62,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     exit();
 }
 
-// ---------- Figures (mga numero) ----------
+// ---------- Figures ----------
 $rows = function ($sql, $types = '', ...$args) use ($conn) {
     $stmt = $conn->prepare($sql);
     if ($types !== '') $stmt->bind_param($types, ...$args);
@@ -90,7 +87,7 @@ try {
          WHERE paid_at BETWEEN ? AND ? GROUP BY method ORDER BY total DESC", "ss", $from_dt, $to_dt);
 
     if ($range === 'week') {
-        // the last 8 weeks as bars, this week huli (same keys as the dashboard)
+        // the last 8 weeks as bars, this week last (same keys as the dashboard)
         for ($i = 7; $i >= 0; $i--) {
             $mon = strtotime("monday this week -$i week");
             $chart[date('oW', $mon)] = ['label' => date('M j', $mon), 'n' => 0.0];
@@ -100,12 +97,12 @@ try {
             if (isset($chart[$r['k']])) $chart[$r['k']]['n'] = (float) $r['total'];
         }
         $cur_key = date('oW');
-        // fair comparison: same days ng last week, not a full week
+        // fair comparison: the same days of last week, not a full week
         $prev_from = date('Y-m-d', strtotime('monday this week -1 week'));
         $prev_total = (float) $rows("SELECT COALESCE(SUM(amount_due), 0) AS t FROM payments WHERE paid_at >= ? AND paid_at < NOW() - INTERVAL 7 DAY", "s", $prev_from)[0]['t'];
         $delta_label = 'vs same days last week';
         $period_word = 'this week';
-        // this week per day, Monday hanggang today
+        // this week by day, Monday up to today
         $by_day = [];
         foreach ($rows("SELECT DATE(paid_at) AS d, COUNT(*) AS n, SUM(amount_due) AS total FROM payments WHERE paid_at BETWEEN ? AND ? GROUP BY d", "ss", $from_dt, $to_dt) as $r) $by_day[$r['d']] = $r;
         for ($d = strtotime($from); $d <= strtotime($today); $d += 86400) {
@@ -143,7 +140,7 @@ if ($prev_total > 0) {
     $delta_html = '<span class="wd-delta ' . $cls . '"><i class="bi ' . $ico . '"></i>' . abs($p) . '%</span> ' . $delta_label;
 }
 
-// Bars: ang dashboard's chart, drawn with pesos. Short labels above the bars (1.4k), exact amounts on hover.
+// Bars: the dashboard's chart, drawn with pesos. Short labels above the bars (1.4k), exact amounts on hover.
 $short = function ($n) { return $n >= 1000 ? rtrim(rtrim(number_format($n / 1000, 1), '0'), '.') . 'k' : (string) (int) round($n); };
 $render_bars = function (array $items, $current_key) use ($short) {
     $its = array_values($items); $keys = array_keys($items);
@@ -206,6 +203,9 @@ include __DIR__ . '/components/header.php';
     .sr-method { flex: 1 1 0; display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 16px 18px; border: 1px solid #edf1f8; border-radius: 14px; background: #fbfcfe; }
     .sr-method-amt { font-family: "Space Grotesk", "Inter", system-ui, sans-serif; font-size: 1.7rem; font-weight: 600; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
     .sr-row2 { align-items: stretch; }
+    .sr-mrow { padding: 12px 22px; border-top: 1px solid #edf1f8; }
+    .sr-mrow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    .sr-mrow-sub { font-size: .75rem; color: #5b6b80; margin-top: 2px; }
     .wd-page .wd-main { margin-top: 0; }
     .wd-page .sr-row2 { margin-top: 22px; }
     @media print {
@@ -237,7 +237,7 @@ include __DIR__ . '/components/header.php';
         <div class="ot-hint"><i class="bi bi-exclamation-triangle"></i><span>Could not load the report. Please try again.</span></div>
     <?php endif; ?>
 
-    <!-- The trend: same panel as Completed orders sa dashboard, in pesos. -->
+    <!-- The trend: same panel as Completed orders on the dashboard, in pesos. -->
     <div class="wd-main">
     <section class="wd-panel wd-done" aria-label="Sales">
         <div class="wd-panel-head">
@@ -285,7 +285,7 @@ include __DIR__ . '/components/header.php';
             <?php if (!$by_service): ?>
                 <div class="sr-none">No sales <?php echo $period_word; ?> yet.</div>
             <?php else: ?>
-            <div class="table-responsive">
+            <div class="table-responsive d-none d-md-block">
             <table class="ot-table">
                 <thead><tr><th>Service</th><th>Orders</th><th>Weight</th><th>Sales</th></tr></thead>
                 <tbody>
@@ -300,6 +300,14 @@ include __DIR__ . '/components/header.php';
                 </tbody>
             </table>
             </div>
+            <div class="d-md-none">
+                <?php foreach ($by_service as $sv): ?>
+                    <div class="sr-mrow">
+                        <div class="sr-mrow-top"><span class="ot-cust-name"><?php echo htmlspecialchars($sv['name']); ?></span><span class="ot-amount"><?php echo ui_money($sv['total']); ?></span></div>
+                        <div class="sr-mrow-sub"><?php echo (int) $sv['n']; ?> order<?php echo (int) $sv['n'] === 1 ? '' : 's'; ?> &middot; <?php echo number_format((float) $sv['kg'], 1); ?> kg</div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
             <?php endif; ?>
         </section>
 
@@ -308,7 +316,7 @@ include __DIR__ . '/components/header.php';
         <?php if (!$series): ?>
             <div class="sr-none">No sales <?php echo $period_word; ?> yet.</div>
         <?php else: ?>
-        <div class="table-responsive">
+        <div class="table-responsive d-none d-md-block">
         <table class="ot-table">
             <thead><tr><th><?php echo $series_head; ?></th><th>Orders</th><th>Sales</th></tr></thead>
             <tbody>
@@ -322,6 +330,14 @@ include __DIR__ . '/components/header.php';
             </tbody>
         </table>
         </div>
+        <div class="d-md-none">
+            <?php foreach ($series as $r): ?>
+                <div class="sr-mrow">
+                    <div class="sr-mrow-top"><span class="ot-cust-name"><?php echo htmlspecialchars($r['label']); ?></span><span class="ot-amount"><?php echo ui_money($r['total']); ?></span></div>
+                    <div class="sr-mrow-sub"><?php echo (int) $r['n']; ?> order<?php echo (int) $r['n'] === 1 ? '' : 's'; ?></div>
+                </div>
+            <?php endforeach; ?>
+        </div>
         <?php endif; ?>
         </section>
 
@@ -329,4 +345,4 @@ include __DIR__ . '/components/header.php';
 
 </div>
 
-<?php include __DIR__ . '/components/footer.php'; ?>    
+<?php include __DIR__ . '/components/footer.php'; ?>
